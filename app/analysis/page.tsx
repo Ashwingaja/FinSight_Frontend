@@ -39,29 +39,40 @@ export default function AnalysisPage() {
 
     const fetchAnalysis = async () => {
         try {
-            // Get latest financial data first
-            const dashboardResponse = await fetch('/api/dashboard');
-            const dashboardData = await dashboardResponse.json();
-
-            if (!dashboardData.hasData || !dashboardData.financialData) {
-                setLoading(false);
-                return;
-            }
-
-            const financialDataId = dashboardData.financialData._id;
-
-            // Try to fetch existing analysis
-            const analysisResponse = await fetch(`/api/analyze?financialDataId=${financialDataId}`);
+            console.log('🔍 Fetching latest analysis...');
+            
+            // Try to fetch the latest analysis directly
+            const analysisResponse = await fetch('/api/analyze/latest');
+            console.log('📥 Analysis Response Status:', analysisResponse.status);
 
             if (analysisResponse.ok) {
-                const data = await analysisResponse.json();
-                setAnalysis(data.analysis);
+                const result = await analysisResponse.json();
+                console.log('✅ Analysis Result:', result);
+                // Backend returns {status, analysis}
+                const analysisData = result.analysis || result.data || result;
+                console.log('📊 Analysis Data:', analysisData);
+                setAnalysis(analysisData);
             } else {
-                // Generate new analysis
-                await generateAnalysis(financialDataId);
+                console.log('⚠️ No analysis found, checking for financial data...');
+                // No analysis exists, check if we have financial data to generate from
+                const dashboardResponse = await fetch('/api/dashboard');
+                const dashboardResult = await dashboardResponse.json();
+                const dashboardData = dashboardResult.data || dashboardResult;
+                
+                console.log('📈 Dashboard Data:', dashboardData);
+
+                if (dashboardData.financialSummary) {
+                    console.log('💡 Financial data exists, but no analysis yet');
+                    // We have financial data but no analysis - user needs to generate it
+                    setAnalysis(null);
+                } else {
+                    console.log('❌ No financial data available');
+                    setAnalysis(null);
+                }
             }
         } catch (error) {
-            console.error('Failed to fetch analysis:', error);
+            console.error('❌ Failed to fetch analysis:', error);
+            setAnalysis(null);
         } finally {
             setLoading(false);
         }
@@ -70,16 +81,19 @@ export default function AnalysisPage() {
     const generateAnalysis = async (financialDataId: string) => {
         setGenerating(true);
         try {
+            console.log('🔄 Generating analysis for:', financialDataId);
             const response = await fetch('/api/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ financialDataId }),
             });
 
+            console.log('📤 Generate Response Status:', response.status);
             const data = await response.json();
-            setAnalysis(data.analysis);
+            console.log('✅ Generated Analysis:', data);
+            setAnalysis(data.analysis || data);
         } catch (error) {
-            console.error('Failed to generate analysis:', error);
+            console.error('❌ Failed to generate analysis:', error);
         } finally {
             setGenerating(false);
         }

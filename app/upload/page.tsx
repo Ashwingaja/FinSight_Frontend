@@ -21,6 +21,8 @@ export default function UploadPage() {
     const [uploadResult, setUploadResult] = useState<any>(null);
     const [error, setError] = useState<string | null>(null);
     const [documents, setDocuments] = useState<any[]>([]);
+    const [extractedData, setExtractedData] = useState<any>(null);
+    const [showDataDialog, setShowDataDialog] = useState(false);
 
     useEffect(() => {
         if (isLoaded && !isSignedIn) {
@@ -84,16 +86,20 @@ export default function UploadPage() {
             }
 
             setUploadResult(data);
-            setFile(null);
-
-            // Backend processes asynchronously; poll for status
-            const uploadedDocumentId = data.documentId || data.document?.id;
-            if (!uploadedDocumentId) {
-                throw new Error('Document ID required');
+            
+            // Show extracted data if available
+            if (data.extractedData) {
+                setExtractedData(data.extractedData);
+                setShowDataDialog(true);
             }
-            setProcessing(true);
-            await waitForProcessing(uploadedDocumentId);
+            
+            setFile(null);
             fetchDocuments();
+            
+            // Redirect to dashboard to see revenue immediately
+            setTimeout(() => {
+                router.push('/dashboard');
+            }, 3000);
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -200,10 +206,54 @@ export default function UploadPage() {
                             </div>
                         )}
 
-                        {uploadResult && !processing && (
-                            <div className="flex items-center gap-2 p-4 bg-green-50 text-green-700 rounded-lg">
-                                <CheckCircle className="h-5 w-5" />
-                                <span>File uploaded successfully! Processing data...</span>
+                        {uploadResult && showDataDialog && extractedData && (
+                            <div className="space-y-4 p-6 bg-gradient-to-br from-green-50 to-blue-50 rounded-lg border-2 border-green-200">
+                                <div className="flex items-center gap-2 text-green-700">
+                                    <CheckCircle className="h-6 w-6" />
+                                    <h3 className="text-lg font-semibold">✅ Data Extracted Successfully!</h3>
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-4 bg-white rounded-lg shadow-sm">
+                                        <p className="text-sm text-muted-foreground mb-1">Total Revenue</p>
+                                        <p className="text-2xl font-bold text-green-600">
+                                            ₹{extractedData.financialData?.revenue?.total?.toLocaleString('en-IN') || '0'}
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-white rounded-lg shadow-sm">
+                                        <p className="text-sm text-muted-foreground mb-1">Total Expenses</p>
+                                        <p className="text-2xl font-bold text-red-600">
+                                            ₹{extractedData.financialData?.expenses?.total?.toLocaleString('en-IN') || '0'}
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-white rounded-lg shadow-sm">
+                                        <p className="text-sm text-muted-foreground mb-1">Net Profit</p>
+                                        <p className="text-2xl font-bold text-blue-600">
+                                            ₹{extractedData.financialData?.profitability?.netProfit?.toLocaleString('en-IN') || '0'}
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-white rounded-lg shadow-sm">
+                                        <p className="text-sm text-muted-foreground mb-1">Rows Processed</p>
+                                        <p className="text-2xl font-bold text-purple-600">
+                                            {extractedData.extractedRows || 0}
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                {extractedData.columns && extractedData.columns.length > 0 && (
+                                    <div className="p-4 bg-white rounded-lg shadow-sm">
+                                        <p className="text-sm font-semibold mb-2">Detected Columns:</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {extractedData.columns.map((col: string, idx: number) => (
+                                                <Badge key={idx} variant="outline">{col}</Badge>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <p className="text-sm text-muted-foreground text-center">
+                                    Redirecting to dashboard in 3 seconds...
+                                </p>
                             </div>
                         )}
 
@@ -270,17 +320,7 @@ export default function UploadPage() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <Badge
-                                            variant={
-                                                (doc.processingStatus || doc.status) === 'completed' || (doc.processingStatus || doc.status) === 'processed'
-                                                    ? 'success'
-                                                    : (doc.processingStatus || doc.status) === 'failed'
-                                                        ? 'destructive'
-                                                        : 'default'
-                                            }
-                                        >
-                                            {doc.processingStatus || doc.status}
-                                        </Badge>
+                                        {/* Status badge removed for cleaner UI */}
                                     </div>
                                 ))}
                             </div>

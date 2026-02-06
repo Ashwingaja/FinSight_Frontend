@@ -28,6 +28,7 @@ export default function Dashboard() {
     const router = useRouter();
     const [dashboardData, setDashboardData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    const [generatingReport, setGeneratingReport] = useState(false);
 
     useEffect(() => {
         if (isLoaded && !isSignedIn) {
@@ -44,12 +45,68 @@ export default function Dashboard() {
     const fetchDashboardData = async () => {
         try {
             const response = await fetch('/api/dashboard');
-            const data = await response.json();
+            const result = await response.json();
+            console.log('🔍 API Response:', result);
+            // Backend returns { status: 'success', data: {...} }
+            const data = result.data || result;
+            console.log('📊 Dashboard Data:', data);
+            console.log('💡 Recent Insights:', data.recentInsights);
+            console.log('🎯 Top Recommendations:', data.topRecommendations);
             setDashboardData(data);
         } catch (error) {
             console.error('Failed to fetch dashboard data:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleGenerateReport = async () => {
+        try {
+            setGeneratingReport(true);
+            console.log('🔄 Generating report...');
+            
+            // Generate report
+            const response = await fetch('/api/reports', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ reportType: 'investor' }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to generate report');
+            }
+
+            const result = await response.json();
+            console.log('✅ Report generated:', result);
+            
+            const reportId = result.report._id || result.report.id;
+            
+            // Download the PDF
+            console.log('📥 Downloading PDF...');
+            const downloadResponse = await fetch(`/api/reports/${reportId}/download`);
+            
+            if (!downloadResponse.ok) {
+                throw new Error('Failed to download report');
+            }
+
+            // Create blob and download
+            const blob = await downloadResponse.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `FinSight-Report-${new Date().toISOString().split('T')[0]}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            console.log('✅ Report downloaded successfully!');
+            alert('Report generated and downloaded successfully!');
+        } catch (error) {
+            console.error('❌ Failed to generate report:', error);
+            alert('Failed to generate report. Please try again.');
+        } finally {
+            setGeneratingReport(false);
         }
     };
 
@@ -64,7 +121,7 @@ export default function Dashboard() {
         );
     }
 
-    if (!dashboardData?.hasData) {
+    if (!dashboardData?.financialSummary) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
                 <DashboardHeader
@@ -99,7 +156,23 @@ export default function Dashboard() {
         );
     }
 
-    const { summary, financialData, trends } = dashboardData;
+    const summary = {
+        totalRevenue: dashboardData.financialSummary?.revenue || 0,
+        netProfit: dashboardData.financialSummary?.netProfit || 0,
+        profitMargin: dashboardData.financialSummary?.netMargin || 0,
+        healthScore: dashboardData.scores?.healthScore || 0,
+        riskScore: dashboardData.scores?.riskScore || 0,
+    };
+
+    const financialData = {
+        expenses: {
+            categories: dashboardData.charts?.expenseBreakdown || [],
+        },
+    };
+
+    const trends = {
+        revenue: dashboardData.charts?.revenueVsExpenses?.revenue || [],
+    };
 
     const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
 
@@ -230,6 +303,123 @@ export default function Dashboard() {
                     </CardContent>
                 </Card>
 
+                {/* AI Insights & Recommendations */}
+                {(dashboardData.recentInsights?.length > 0 || dashboardData.topRecommendations?.length > 0) && (
+                    <>
+                        {console.log('✅ Rendering Insights Section - Insights:', dashboardData.recentInsights?.length, 'Recommendations:', dashboardData.topRecommendations?.length)}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                        {/* AI Insights */}
+                        {dashboardData.recentInsights?.length > 0 && (
+                            <Card>
+                                <CardHeader>
+                                    <div className="flex items-center gap-2">
+                                        <BarChart3 className="h-5 w-5 text-blue-600" />
+                                        <CardTitle>AI Insights</CardTitle>
+                                    </div>
+                                    <CardDescription>Key findings from your financial data</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-3">
+                                        {dashboardData.recentInsights.map((insight: any, index: number) => {
+                                            const severityColors = {
+                                                critical: 'bg-red-50 border-red-200',
+                                                warning: 'bg-yellow-50 border-yellow-200',
+                                                info: 'bg-blue-50 border-blue-200',
+                                                positive: 'bg-green-50 border-green-200',
+                                            };
+                                            const severityDots = {
+                                                critical: 'bg-red-600',
+                                                warning: 'bg-yellow-600',
+                                                info: 'bg-blue-600',
+                                                positive: 'bg-green-600',
+                                            };
+                                            return (
+                                                <div 
+                                                    key={index} 
+                                                    className={`flex gap-3 p-3 rounded-lg border ${severityColors[insight.severity as keyof typeof severityColors] || 'bg-gray-50 border-gray-200'}`}
+                                                >
+                                                    <div className="flex-shrink-0 mt-0.5">
+                                                        <div className={`h-2 w-2 rounded-full ${severityDots[insight.severity as keyof typeof severityDots] || 'bg-gray-600'}`}></div>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <p className="text-sm font-semibold text-gray-900 mb-1">{insight.title}</p>
+                                                        <p className="text-sm text-gray-700">{insight.description}</p>
+                                                        {insight.impact && (
+                                                            <p className="text-xs text-gray-600 mt-1 italic">{insight.impact}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <Link href="/analysis" className="block mt-4">
+                                        <Button variant="outline" size="sm" className="w-full">
+                                            View Full Analysis
+                                        </Button>
+                                    </Link>
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* Top Recommendations */}
+                        {dashboardData.topRecommendations?.length > 0 && (
+                            <Card>
+                                <CardHeader>
+                                    <div className="flex items-center gap-2">
+                                        <TrendingUp className="h-5 w-5 text-green-600" />
+                                        <CardTitle>Recommendations</CardTitle>
+                                    </div>
+                                    <CardDescription>AI-powered suggestions for improvement</CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="space-y-3">
+                                        {dashboardData.topRecommendations.map((recommendation: any, index: number) => {
+                                            const priorityColors = {
+                                                high: 'bg-red-50 border-red-200',
+                                                medium: 'bg-yellow-50 border-yellow-200',
+                                                low: 'bg-green-50 border-green-200',
+                                            };
+                                            const priorityBadges = {
+                                                high: 'bg-red-100 text-red-800',
+                                                medium: 'bg-yellow-100 text-yellow-800',
+                                                low: 'bg-green-100 text-green-800',
+                                            };
+                                            return (
+                                                <div 
+                                                    key={index} 
+                                                    className={`flex gap-3 p-3 rounded-lg border ${priorityColors[recommendation.priority as keyof typeof priorityColors] || 'bg-gray-50 border-gray-200'}`}
+                                                >
+                                                    <div className="flex-shrink-0 mt-0.5">
+                                                        <TrendingUp className="h-4 w-4 text-green-600" />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <p className="text-sm font-semibold text-gray-900">{recommendation.title}</p>
+                                                            <Badge className={`text-xs ${priorityBadges[recommendation.priority as keyof typeof priorityBadges] || 'bg-gray-100 text-gray-800'}`}>
+                                                                {recommendation.priority}
+                                                            </Badge>
+                                                        </div>
+                                                        <p className="text-sm text-gray-700">{recommendation.description}</p>
+                                                        {recommendation.expectedImpact && (
+                                                            <p className="text-xs text-gray-600 mt-1 italic">Impact: {recommendation.expectedImpact}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <Link href="/analysis" className="block mt-4">
+                                        <Button variant="outline" size="sm" className="w-full">
+                                            View All Recommendations
+                                        </Button>
+                                    </Link>
+                                </CardContent>
+                            </Card>
+                        )}
+                    </div>
+                    </>
+                )}
+
                 {/* Quick Actions */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <Link href="/upload">
@@ -250,15 +440,20 @@ export default function Dashboard() {
                             </CardContent>
                         </Card>
                     </Link>
-                    <Link href="/reports">
-                        <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-                            <CardContent className="pt-6 text-center">
-                                <FileText className="h-12 w-12 mx-auto mb-4 text-green-600" />
-                                <h3 className="font-semibold mb-2">Generate Report</h3>
-                                <p className="text-sm text-muted-foreground">Investor-ready reports</p>
-                            </CardContent>
-                        </Card>
-                    </Link>
+                    <Card 
+                        className={`hover:shadow-lg transition-shadow ${generatingReport ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                        onClick={generatingReport ? undefined : handleGenerateReport}
+                    >
+                        <CardContent className="pt-6 text-center">
+                            <FileText className="h-12 w-12 mx-auto mb-4 text-green-600" />
+                            <h3 className="font-semibold mb-2">
+                                {generatingReport ? 'Generating...' : 'Generate Report'}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                                {generatingReport ? 'Please wait...' : 'Download PDF report'}
+                            </p>
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
         </div>
