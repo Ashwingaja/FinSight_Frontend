@@ -5,7 +5,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -22,7 +22,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized - No token' }, { status: 401 });
     }
 
-    const reportId = params.id;
+    // Await params for Next.js 15
+    const { id: reportId } = await params;
 
     // Forward the request to the backend for PDF download
     const response = await fetch(`${API_URL}/api/reports/${reportId}/download`, {
